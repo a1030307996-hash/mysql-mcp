@@ -8,11 +8,26 @@ import * as z from "zod/v4";
 
 loadConfigFile();
 
+const PACKAGE_VERSION = "0.1.2";
 const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = Number.parseInt(process.env.MYSQL_MCP_MAX_LIMIT ?? "500", 10);
-const QUERY_TIMEOUT_MS = Number.parseInt(process.env.MYSQL_MCP_QUERY_TIMEOUT_MS ?? "10000", 10);
-const ALLOW_SCHEMA_OVERRIDE = process.env.MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE === "true";
+const MAX_LIMIT = readIntEnv("MYSQL_MCP_MAX_LIMIT", 500, 1, 10000);
+const QUERY_TIMEOUT_MS = readIntEnv("MYSQL_MCP_QUERY_TIMEOUT_MS", 10000, 100, 300000);
+const CONNECTION_LIMIT = readIntEnv("MYSQL_MCP_CONNECTION_LIMIT", 5, 1, 100);
+const ALLOW_SCHEMA_OVERRIDE = readBooleanEnv("MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE", false);
+const ENABLE_RAW_SQL = readBooleanEnv("MYSQL_MCP_ENABLE_RAW_SQL", false);
 const LOG_FILE = process.env.MYSQL_MCP_LOG_FILE || "";
+const LARGE_COLUMN_TYPES = new Set([
+  "tinytext",
+  "text",
+  "mediumtext",
+  "longtext",
+  "tinyblob",
+  "blob",
+  "mediumblob",
+  "longblob",
+  "json",
+  "geometry"
+]);
 
 type QueryValue = string | number | boolean | null;
 type MysqlPool = ReturnType<typeof mysql.createPool>;
@@ -29,6 +44,7 @@ type ColumnRow = RowDataPacket & {
   COLUMN_NAME: string;
   ORDINAL_POSITION: number;
   COLUMN_TYPE: string;
+  DATA_TYPE: string;
   IS_NULLABLE: "YES" | "NO";
   COLUMN_DEFAULT: string | null;
   COLUMN_KEY: string;
@@ -87,6 +103,23 @@ function getEnv(name: string, fallback?: string): string {
   return value;
 }
 
+function readIntEnv(name: string, fallback: number, min: number, max: number): number {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || rawValue === "") return fallback;
+  if (!/^\d+$/.test(rawValue)) throw new Error(`${name} must be an integer between ${min} and ${max}.`);
+  const value = Number.parseInt(rawValue, 10);
+  if (value < min || value > max) throw new Error(`${name} must be an integer between ${min} and ${max}.`);
+  return value;
+}
+
+function readBooleanEnv(name: string, fallback: boolean): boolean {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || rawValue === "") return fallback;
+  if (rawValue === "true") return true;
+  if (rawValue === "false") return false;
+  throw new Error(`${name} must be true or false.`);
+}
+
 function getDatabase(): string {
   return getEnv("MYSQL_DATABASE");
 }
@@ -99,7 +132,7 @@ function createPool(): MysqlPool {
     password: getEnv("MYSQL_PASSWORD", ""),
     database: getDatabase(),
     waitForConnections: true,
-    connectionLimit: Number.parseInt(process.env.MYSQL_MCP_CONNECTION_LIMIT ?? "5", 10),
+    connectionLimit: CONNECTION_LIMIT,
     namedPlaceholders: false,
     multipleStatements: false,
     dateStrings: true,
@@ -120,20 +153,77 @@ function escapeIdentifier(identifier: string): string {
   return `\`${identifier.replace(/`/g, "``")}\``;
 }
 
+function getDataType(column: ColumnRow): string {
+  return column.DATA_TYPE.toLowerCase();
+}
+
+function isLargeColumn(column: ColumnRow): boolean {
+  return LARGE_COLUMN_TYPES.has(getDataType(column));
+}
+
 function normalizeSql(sql: string): string {
   return sql.trim().replace(/;+\s*$/, "").trim();
 }
 
-function stripSqlComments(sql: string): string {
-  return sql
-    .replace(/\/\*![\s\S]*?\*\//g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/--[^\n\r]*(?:\r?\n|$)/g, " ")
-    .replace(/#[^\n\r]*(?:\r?\n|$)/g, " ");
+function stripSqlCommentsAndStrings(sql: string): string {
+  let result = "";
+  for (let i = 0; i < sql.length; i += 1) {
+    const current = sql[i];
+    const next = sql[i + 1] ?? "";
+    if (current === "/" && next === "*") {
+      if (sql[i + 2] === "!") throw new Error("MySQL executable comments are not allowed.");
+      const end = sql.indexOf("*/", i + 2);
+      if (end === -1) throw new Error("Unclosed SQL block comment.");
+      result += " ";
+      i = end + 1;
+      continue;
+    }
+    if (current === "-" && next === "-" && /\s/.test(sql[i + 2] ?? "")) {
+      const end = sql.slice(i + 2).search(/[\r\n]/);
+      if (end === -1) break;
+      result += " ";
+      i += end + 1;
+      continue;
+    }
+    if (current === "#") {
+      const end = sql.slice(i + 1).search(/[\r\n]/);
+      if (end === -1) break;
+      result += " ";
+      i += end;
+      continue;
+    }
+    if (current === "'" || current === "\"") {
+      const quote = current;
+      result += " ";
+      for (i += 1; i < sql.length; i += 1) {
+        if (sql[i] === "\\") {
+          i += 1;
+          continue;
+        }
+        if (sql[i] === quote) break;
+      }
+      if (i >= sql.length) throw new Error("Unclosed SQL string literal.");
+      continue;
+    }
+    if (current === "`") {
+      result += " ";
+      for (i += 1; i < sql.length; i += 1) {
+        if (sql[i] === "`" && sql[i + 1] === "`") {
+          i += 1;
+          continue;
+        }
+        if (sql[i] === "`") break;
+      }
+      if (i >= sql.length) throw new Error("Unclosed SQL quoted identifier.");
+      continue;
+    }
+    result += current;
+  }
+  return result;
 }
 
 function compactSqlForKeywordChecks(sql: string): string {
-  return stripSqlComments(sql).replace(/\s+/g, " ").trim();
+  return stripSqlCommentsAndStrings(sql).replace(/\s+/g, " ").trim();
 }
 
 function assertReadOnlySql(sql: string): string {
@@ -142,11 +232,11 @@ function assertReadOnlySql(sql: string): string {
     throw new Error("SQL cannot be empty.");
   }
 
-  if (normalized.includes(";")) {
+  const checkedSql = compactSqlForKeywordChecks(normalized);
+
+  if (checkedSql.includes(";")) {
     throw new Error("Multiple SQL statements are not allowed.");
   }
-
-  const checkedSql = compactSqlForKeywordChecks(normalized);
 
   if (!/^(select|show|describe|desc|explain|with)\b/i.test(checkedSql)) {
     throw new Error("Only read-only SQL is allowed: SELECT, SHOW, DESCRIBE, DESC, EXPLAIN, or WITH.");
@@ -215,7 +305,7 @@ const LIST_TABLES_SQL = `SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_COMM
      FROM information_schema.TABLES
      WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN (?)
      ORDER BY TABLE_NAME`;
-const DESCRIBE_COLUMNS_SQL = `SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT,
+const DESCRIBE_COLUMNS_SQL = `SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT,
             COLUMN_KEY, EXTRA, COLUMN_COMMENT
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
@@ -250,11 +340,22 @@ async function getIndexes(pool: MysqlPool, schema: string, table: string) {
   return rows;
 }
 
+function selectSampleColumns(columns: ColumnRow[], requestedColumns: string[] | undefined, includeLargeColumns: boolean): ColumnRow[] {
+  const requested = requestedColumns ? new Set(requestedColumns) : null;
+  const missing = requestedColumns?.filter((column) => !columns.some((item) => item.COLUMN_NAME === column)) ?? [];
+  if (missing.length > 0) throw new Error(`Unknown column(s): ${missing.join(", ")}`);
+  const selected = columns.filter((column) => requested === null || requested.has(column.COLUMN_NAME));
+  const safeColumns = includeLargeColumns ? selected : selected.filter((column) => !isLargeColumn(column));
+  if (safeColumns.length === 0 && selected.length > 0) throw new Error("Only large columns were selected. Set includeLargeColumns=true to read them.");
+  if (safeColumns.length === 0) throw new Error("Table has no sampleable columns.");
+  return safeColumns;
+}
+
 async function main() {
   const pool = createPool();
   const server = new McpServer({
     name: "mysql-readonly-mcp",
-    version: "0.1.0"
+    version: PACKAGE_VERSION
   });
 
   server.registerTool(
@@ -315,17 +416,23 @@ async function main() {
       inputSchema: {
         table: z.string().min(1).describe("Table name."),
         schema: z.string().optional().describe("Database/schema name. Defaults to MYSQL_DATABASE."),
+        columns: z.array(z.string().min(1)).min(1).max(100).optional().describe("Optional column names to read. Defaults to all non-large columns."),
+        includeLargeColumns: z.boolean().optional().default(false).describe("Include TEXT/BLOB/JSON/geometry columns in samples. Default: false."),
         limit: z.number().int().positive().max(MAX_LIMIT).optional().describe(`Rows to return. Max ${MAX_LIMIT}.`),
         offset: z.number().int().nonnegative().optional().default(0).describe("Rows to skip.")
       }
     },
-    async ({ table, schema, limit, offset }) => {
+    async ({ table, schema, columns, includeLargeColumns, limit, offset }) => {
       const database = resolveSchema(schema);
+      const tableColumns = await getColumns(pool, database, table);
+      if (tableColumns.length === 0) throw new Error(`Table not found or has no visible columns: ${database}.${table}`);
+      const selectedColumns = selectSampleColumns(tableColumns, columns, includeLargeColumns ?? false);
       const tableName = `${escapeIdentifier(database)}.${escapeIdentifier(table)}`;
+      const columnList = selectedColumns.map((column) => escapeIdentifier(column.COLUMN_NAME)).join(", ");
       const finalLimit = clampLimit(limit);
       const finalOffset = offset ?? 0;
-      const sampleSql = `SELECT * FROM ${tableName} LIMIT ? OFFSET ?`;
-      const [rows] = await auditTool("sample_table", { schema: database, table, limit: finalLimit, offset: finalOffset, sql: sampleSql, paramCount: 2 }, () => pool.query<RowDataPacket[]>(
+      const sampleSql = `SELECT ${columnList} FROM ${tableName} LIMIT ? OFFSET ?`;
+      const [rows] = await auditTool("sample_table", { schema: database, table, columns: selectedColumns.map((column) => column.COLUMN_NAME), includeLargeColumns: includeLargeColumns ?? false, limit: finalLimit, offset: finalOffset, sql: sampleSql, paramCount: 2 }, () => pool.query<RowDataPacket[]>(
         sampleSql,
         [finalLimit, finalOffset]
       ));
@@ -333,6 +440,8 @@ async function main() {
       return asText({
         schema: database,
         table,
+        columns: selectedColumns.map((column) => column.COLUMN_NAME),
+        omittedLargeColumns: tableColumns.filter((column) => isLargeColumn(column) && !selectedColumns.some((selected) => selected.COLUMN_NAME === column.COLUMN_NAME)).map((column) => column.COLUMN_NAME),
         limit: finalLimit,
         offset: finalOffset,
         rows
@@ -344,7 +453,7 @@ async function main() {
     "execute_readonly_sql",
     {
       title: "Execute Read-Only MySQL SQL",
-      description: "Execute a read-only SELECT/SHOW/DESCRIBE/EXPLAIN statement. Results are capped by maxRows.",
+      description: "Execute a trusted read-only SELECT/SHOW/DESCRIBE/EXPLAIN statement. Disabled unless MYSQL_MCP_ENABLE_RAW_SQL=true.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         sql: z.string().min(1).describe("Read-only SQL statement."),
@@ -353,6 +462,9 @@ async function main() {
       }
     },
     async ({ sql, params, maxRows }) => {
+      if (!ENABLE_RAW_SQL) {
+        throw new Error("execute_readonly_sql is disabled. Set MYSQL_MCP_ENABLE_RAW_SQL=true to enable trusted raw SQL execution.");
+      }
       const readonlySql = assertReadOnlySql(sql);
       const [rows] = await auditTool("execute_readonly_sql", { sql: readonlySql, paramCount: (params ?? []).length, maxRows: maxRows ?? null }, () => pool.query<RowDataPacket[]>({
         sql: readonlySql,

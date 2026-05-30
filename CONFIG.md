@@ -16,6 +16,7 @@ MYSQL_MCP_MAX_LIMIT=500
 MYSQL_MCP_QUERY_TIMEOUT_MS=10000
 MYSQL_MCP_CONNECTION_LIMIT=5
 MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE=false
+MYSQL_MCP_ENABLE_RAW_SQL=false
 MYSQL_MCP_LOG_FILE=/path/to/mysql-readonly-audit.jsonl
 ```
 
@@ -48,13 +49,16 @@ Optional:
 - `MYSQL_PORT`: MySQL port. Default: `3306`.
 - `MYSQL_PASSWORD`: MySQL password. Default: empty string.
 - `MYSQL_CONFIG_FILE`: Path to a local config file.
-- `MYSQL_MCP_MAX_LIMIT`: Maximum rows returned by tools. Default: `500`.
-- `MYSQL_MCP_QUERY_TIMEOUT_MS`: Query timeout. Default: `10000`.
-- `MYSQL_MCP_CONNECTION_LIMIT`: Pool connection limit. Default: `5`.
+- `MYSQL_MCP_MAX_LIMIT`: Maximum rows returned by tools. Default: `500`. Allowed range: `1` to `10000`.
+- `MYSQL_MCP_QUERY_TIMEOUT_MS`: Query timeout. Default: `10000`. Allowed range: `100` to `300000`.
+- `MYSQL_MCP_CONNECTION_LIMIT`: Pool connection limit. Default: `5`. Allowed range: `1` to `100`.
 - `MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE`: Allow tool calls to read schemas other than `MYSQL_DATABASE`. Default: `false`.
+- `MYSQL_MCP_ENABLE_RAW_SQL`: Enable the trusted `execute_readonly_sql` tool. Default: `false`.
 - `MYSQL_MCP_LOG_FILE`: Optional JSONL audit log file path. Logs executed tool, SQL, timing, and status; query results are not logged.
 
 Environment variables override values from `MYSQL_CONFIG_FILE`.
+
+Invalid integer or boolean values fail fast during startup so MCP clients do not run with surprising limits.
 
 ## Read-Only User
 

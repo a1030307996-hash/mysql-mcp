@@ -28,12 +28,18 @@ Parameters:
 
 - `table`: Table name.
 - `schema`: Optional database/schema name. Defaults to `MYSQL_DATABASE`.
+- `columns`: Optional column names to read. Defaults to all non-large columns.
+- `includeLargeColumns`: Include `TEXT`, `BLOB`, `JSON`, and geometry columns in samples. Default: `false`.
 - `limit`: Rows to return. Capped by `MYSQL_MCP_MAX_LIMIT`.
 - `offset`: Rows to skip. Default: `0`.
 
+By default, `sample_table` avoids large columns to keep sample reads lightweight. Set `columns` and `includeLargeColumns=true` when those fields are intentionally needed.
+
 ## `execute_readonly_sql`
 
-Execute a read-only SQL statement.
+Execute a trusted read-only SQL statement.
+
+This tool is disabled by default. Set `MYSQL_MCP_ENABLE_RAW_SQL=true` to enable it for trusted users.
 
 Allowed statement prefixes:
 
@@ -50,9 +56,9 @@ Parameters:
 - `params`: Optional `?` placeholder values.
 - `maxRows`: Maximum rows to return. Capped by `MYSQL_MCP_MAX_LIMIT`.
 
-The server rejects multiple statements and common write, DDL, transaction, lock, file-output, and administrative keywords.
+The server rejects multiple statements, MySQL executable comments, and common write, DDL, transaction, lock, file-output, and administrative keywords.
 
-It also strips SQL comments before keyword checks, blocks common DoS or side-effect functions such as `SLEEP`, `BENCHMARK`, `GET_LOCK`, and `LOAD_FILE`, and disables schema overrides by default.
+It also strips SQL comments and string literals before keyword checks, blocks common DoS or side-effect functions such as `SLEEP`, `BENCHMARK`, `GET_LOCK`, and `LOAD_FILE`, and disables schema overrides by default.
 
 If `MYSQL_MCP_LOG_FILE` is configured, each tool call writes one JSON line with timestamp, tool name, status, duration, and SQL metadata. Query result rows are not logged.
 

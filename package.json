@@ -1,6 +1,6 @@
 {
   "name": "@chenyingxian/mysql-readonly-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Read-only MySQL MCP server for safe schema inspection and SELECT queries.",
   "repository": {
     "type": "git",

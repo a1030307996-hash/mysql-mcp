@@ -16,6 +16,7 @@ MYSQL_MCP_MAX_LIMIT=500
 MYSQL_MCP_QUERY_TIMEOUT_MS=10000
 MYSQL_MCP_CONNECTION_LIMIT=5
 MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE=false
+MYSQL_MCP_ENABLE_RAW_SQL=false
 MYSQL_MCP_LOG_FILE=/path/to/mysql-readonly-audit.jsonl
 ```
 
@@ -48,13 +49,16 @@ MCP 客户端示例：
 - `MYSQL_PORT`：MySQL 端口，默认 `3306`。
 - `MYSQL_PASSWORD`：MySQL 密码，默认空字符串。
 - `MYSQL_CONFIG_FILE`：本地配置文件路径。
-- `MYSQL_MCP_MAX_LIMIT`：工具最大返回行数，默认 `500`。
-- `MYSQL_MCP_QUERY_TIMEOUT_MS`：查询超时时间，默认 `10000`。
-- `MYSQL_MCP_CONNECTION_LIMIT`：连接池数量，默认 `5`。
+- `MYSQL_MCP_MAX_LIMIT`：工具最大返回行数，默认 `500`，允许范围 `1` 到 `10000`。
+- `MYSQL_MCP_QUERY_TIMEOUT_MS`：查询超时时间，默认 `10000`，允许范围 `100` 到 `300000`。
+- `MYSQL_MCP_CONNECTION_LIMIT`：连接池数量，默认 `5`，允许范围 `1` 到 `100`。
 - `MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE`：是否允许工具读取 `MYSQL_DATABASE` 之外的 schema，默认 `false`。
+- `MYSQL_MCP_ENABLE_RAW_SQL`：是否启用受信任的 `execute_readonly_sql` 工具，默认 `false`。
 - `MYSQL_MCP_LOG_FILE`：可选 JSONL 审计日志文件路径。会记录执行的工具、SQL、耗时和状态，不记录查询结果。
 
 环境变量会覆盖 `MYSQL_CONFIG_FILE` 文件里的同名配置。
+
+整数和布尔配置如果填写非法，服务会在启动时直接报错，避免 MCP 客户端在异常限制下运行。
 
 ## 只读账号
 

@@ -1,0 +1,48 @@
+{
+  "name": "@chenyingxian/mysql-readonly-mcp",
+  "version": "0.1.0",
+  "description": "Read-only MySQL MCP server for safe schema inspection and SELECT queries.",
+  "main": "dist/index.js",
+  "bin": {
+    "mysql-readonly-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "mysql",
+    "readonly",
+    "database",
+    "model-context-protocol"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "CONFIG.md",
+    "CONFIG.zh-CN.md",
+    "MCP_TOOLS.md",
+    "MCP_TOOLS.zh-CN.md",
+    ".env.example"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "mysql2": "^3.22.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

@@ -6,9 +6,10 @@
 
 ## 文档
 
-- [配置说明](./CONFIG.zh-CN.md)
-- [工具说明](./MCP_TOOLS.zh-CN.md)
-- [English README](./README.md)
+- [配置说明](https://github.com/a1030307996-hash/mysql-mcp/blob/main/CONFIG.zh-CN.md)
+- [工具说明](https://github.com/a1030307996-hash/mysql-mcp/blob/main/MCP_TOOLS.zh-CN.md)
+- [English README](https://github.com/a1030307996-hash/mysql-mcp/blob/main/README.md)
+- [GitHub 仓库](https://github.com/a1030307996-hash/mysql-mcp)
 
 ## 安装
 

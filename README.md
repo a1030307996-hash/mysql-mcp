@@ -6,9 +6,10 @@ This package is intended for MCP clients that need controlled access to MySQL me
 
 ## Documentation
 
-- [Configuration](./CONFIG.md)
-- [MCP Tools](./MCP_TOOLS.md)
-- [中文文档](./README.zh-CN.md)
+- [Configuration](https://github.com/a1030307996-hash/mysql-mcp/blob/main/CONFIG.md)
+- [MCP Tools](https://github.com/a1030307996-hash/mysql-mcp/blob/main/MCP_TOOLS.md)
+- [中文文档](https://github.com/a1030307996-hash/mysql-mcp/blob/main/README.zh-CN.md)
+- [GitHub Repository](https://github.com/a1030307996-hash/mysql-mcp)
 
 ## Installation
 

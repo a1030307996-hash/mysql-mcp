@@ -2,6 +2,14 @@
   "name": "@chenyingxian/mysql-readonly-mcp",
   "version": "0.1.0",
   "description": "Read-only MySQL MCP server for safe schema inspection and SELECT queries.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/a1030307996-hash/mysql-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/a1030307996-hash/mysql-mcp/issues"
+  },
+  "homepage": "https://github.com/a1030307996-hash/mysql-mcp#readme",
   "main": "dist/index.js",
   "bin": {
     "mysql-readonly-mcp": "dist/index.js"

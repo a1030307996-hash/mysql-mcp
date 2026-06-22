@@ -39,8 +39,6 @@ By default, `sample_table` avoids large columns to keep sample reads lightweight
 
 Execute a trusted read-only SQL statement.
 
-This tool is disabled by default. Set `MYSQL_MCP_ENABLE_RAW_SQL=true` to enable it for trusted users.
-
 Allowed statement prefixes:
 
 - `SELECT`
@@ -59,6 +57,8 @@ Parameters:
 The server rejects multiple statements, MySQL executable comments, and common write, DDL, transaction, lock, file-output, and administrative keywords.
 
 It also strips SQL comments and string literals before keyword checks, blocks common DoS or side-effect functions such as `SLEEP`, `BENCHMARK`, `GET_LOCK`, and `LOAD_FILE`, and disables schema overrides by default.
+
+By default, `execute_readonly_sql` executes the SQL as provided and truncates only the MCP response payload with `maxRows`, preserving old behavior. Set `MYSQL_MCP_LIMIT_RAW_SQL_AT_DB=true` only when you want database-side `LIMIT` wrapping for `SELECT` / `WITH` result transfer.
 
 If `MYSQL_MCP_LOG_FILE` is configured, each tool call writes one JSON line with timestamp, tool name, status, duration, and SQL metadata. Query result rows are not logged.
 

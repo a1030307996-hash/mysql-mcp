@@ -39,8 +39,6 @@
 
 执行受信任的只读 SQL。
 
-该工具默认关闭。需要给受信任用户使用时，设置 `MYSQL_MCP_ENABLE_RAW_SQL=true` 后启用。
-
 允许的语句前缀：
 
 - `SELECT`
@@ -59,6 +57,8 @@
 服务会拒绝多语句、MySQL 可执行注释，以及常见写入、DDL、事务、锁、文件输出和管理类关键字。
 
 服务会先去除 SQL 注释和字符串字面量再检查关键字，并阻止 `SLEEP`、`BENCHMARK`、`GET_LOCK`、`LOAD_FILE` 等常见 DoS 或副作用函数；默认也不允许通过工具参数切换到其它 schema。
+
+默认情况下，`execute_readonly_sql` 会按原始 SQL 执行，只在 MCP 返回内容里按 `maxRows` 截断，保持旧版行为。需要在数据库层限制 `SELECT` / `WITH` 返回量时，可设置 `MYSQL_MCP_LIMIT_RAW_SQL_AT_DB=true`。
 
 如果配置了 `MYSQL_MCP_LOG_FILE`，每次工具调用会写入一行 JSON 日志，包含时间、工具名、状态、耗时和 SQL 元信息，不记录查询结果行。
 

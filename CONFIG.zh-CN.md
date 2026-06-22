@@ -16,7 +16,7 @@ MYSQL_MCP_MAX_LIMIT=500
 MYSQL_MCP_QUERY_TIMEOUT_MS=10000
 MYSQL_MCP_CONNECTION_LIMIT=5
 MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE=false
-MYSQL_MCP_ENABLE_RAW_SQL=false
+MYSQL_MCP_LIMIT_RAW_SQL_AT_DB=false
 MYSQL_MCP_LOG_FILE=/path/to/mysql-readonly-audit.jsonl
 ```
 
@@ -53,7 +53,7 @@ MCP 客户端示例：
 - `MYSQL_MCP_QUERY_TIMEOUT_MS`：查询超时时间，默认 `10000`，允许范围 `100` 到 `300000`。
 - `MYSQL_MCP_CONNECTION_LIMIT`：连接池数量，默认 `5`，允许范围 `1` 到 `100`。
 - `MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE`：是否允许工具读取 `MYSQL_DATABASE` 之外的 schema，默认 `false`。
-- `MYSQL_MCP_ENABLE_RAW_SQL`：是否启用受信任的 `execute_readonly_sql` 工具，默认 `false`。
+- `MYSQL_MCP_LIMIT_RAW_SQL_AT_DB`：是否对 `execute_readonly_sql` 的 `SELECT` / `WITH` 在数据库层包装 `LIMIT`，默认 `false`，保持旧版 SQL 原样执行行为；开启后可减少大结果集查询的数据库返回量。
 - `MYSQL_MCP_LOG_FILE`：可选 JSONL 审计日志文件路径。会记录执行的工具、SQL、耗时和状态，不记录查询结果。
 
 环境变量会覆盖 `MYSQL_CONFIG_FILE` 文件里的同名配置。

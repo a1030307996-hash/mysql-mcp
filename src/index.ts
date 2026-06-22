@@ -14,7 +14,7 @@ const MAX_LIMIT = readIntEnv("MYSQL_MCP_MAX_LIMIT", 500, 1, 10000);
 const QUERY_TIMEOUT_MS = readIntEnv("MYSQL_MCP_QUERY_TIMEOUT_MS", 10000, 100, 300000);
 const CONNECTION_LIMIT = readIntEnv("MYSQL_MCP_CONNECTION_LIMIT", 5, 1, 100);
 const ALLOW_SCHEMA_OVERRIDE = readBooleanEnv("MYSQL_MCP_ALLOW_SCHEMA_OVERRIDE", false);
-const ENABLE_RAW_SQL = readBooleanEnv("MYSQL_MCP_ENABLE_RAW_SQL", false);
+const LIMIT_RAW_SQL_AT_DB = readBooleanEnv("MYSQL_MCP_LIMIT_RAW_SQL_AT_DB", false);
 const LOG_FILE = process.env.MYSQL_MCP_LOG_FILE || "";
 const LARGE_COLUMN_TYPES = new Set([
   "tinytext",
@@ -263,6 +263,25 @@ function assertReadOnlySql(sql: string): string {
   return normalized;
 }
 
+/**
+ * Check whether a read-only SQL statement should be wrapped with a database-side row cap.
+ */
+function shouldApplyRawSqlLimit(sql: string): boolean {
+  return LIMIT_RAW_SQL_AT_DB && /^(select|with)\b/i.test(compactSqlForKeywordChecks(sql));
+}
+
+/**
+ * Optionally wrap SELECT/WITH SQL with LIMIT maxRows + 1 so truncation can be detected.
+ */
+function buildLimitedRawSql(sql: string, maxRows: number): { sql: string; extraParams: QueryValue[]; limited: boolean } {
+  if (!shouldApplyRawSqlLimit(sql)) return { sql, extraParams: [], limited: false };
+  return {
+    sql: `SELECT * FROM (${sql}) AS mcp_limited_result LIMIT ?`,
+    extraParams: [maxRows + 1],
+    limited: true
+  };
+}
+
 function resolveSchema(schema: string | undefined): string {
   const configured = getDatabase();
   if (!schema || schema === configured) return configured;
@@ -453,7 +472,7 @@ async function main() {
     "execute_readonly_sql",
     {
       title: "Execute Read-Only MySQL SQL",
-      description: "Execute a trusted read-only SELECT/SHOW/DESCRIBE/EXPLAIN statement. Disabled unless MYSQL_MCP_ENABLE_RAW_SQL=true.",
+      description: "Execute a trusted read-only SELECT/SHOW/DESCRIBE/EXPLAIN statement.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         sql: z.string().min(1).describe("Read-only SQL statement."),
@@ -462,37 +481,40 @@ async function main() {
       }
     },
     async ({ sql, params, maxRows }) => {
-      if (!ENABLE_RAW_SQL) {
-        throw new Error("execute_readonly_sql is disabled. Set MYSQL_MCP_ENABLE_RAW_SQL=true to enable trusted raw SQL execution.");
-      }
       const readonlySql = assertReadOnlySql(sql);
-      const [rows] = await auditTool("execute_readonly_sql", { sql: readonlySql, paramCount: (params ?? []).length, maxRows: maxRows ?? null }, () => pool.query<RowDataPacket[]>({
-        sql: readonlySql,
-        values: (params ?? []) as QueryValue[],
+      const finalMaxRows = clampLimit(maxRows);
+      const limitedSql = buildLimitedRawSql(readonlySql, finalMaxRows);
+      const queryParams = [...((params ?? []) as QueryValue[]), ...limitedSql.extraParams];
+      const auditDetails: Record<string, unknown> = { sql: limitedSql.sql, paramCount: queryParams.length, maxRows: maxRows ?? null };
+      if (limitedSql.limited) auditDetails.limitApplied = finalMaxRows;
+      const [rows] = await auditTool("execute_readonly_sql", auditDetails, () => pool.query<RowDataPacket[]>({
+        sql: limitedSql.sql,
+        values: queryParams,
         rowsAsArray: false,
         timeout: QUERY_TIMEOUT_MS
       }));
-
       const rowArray = Array.isArray(rows) ? rows : [];
-      const finalMaxRows = clampLimit(maxRows);
-
-      return asText({
+      const payload: Record<string, unknown> = {
         rowCount: rowArray.length,
         returnedRows: Math.min(rowArray.length, finalMaxRows),
         truncated: rowArray.length > finalMaxRows,
         rows: rowArray.slice(0, finalMaxRows)
-      });
+      };
+      if (limitedSql.limited) payload.limitApplied = finalMaxRows;
+      return asText(payload);
     }
   );
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  process.on("SIGINT", async () => {
+  const shutdown = async () => {
     await pool.end();
     await server.close();
     process.exit(0);
-  });
+  };
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }
 
 main().catch((error: unknown) => {
